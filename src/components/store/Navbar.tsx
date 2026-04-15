@@ -13,26 +13,46 @@ export function Navbar() {
   const { t } = useT();
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <Link href="/" className="text-xl font-bold tracking-tight text-gray-900">
-          {t.siteTitle}
-        </Link>
-
-        <div className="flex items-center gap-3">
+    <header
+      className="sticky top-0 z-40"
+      style={{ background: 'var(--cream)', borderBottom: '1px solid var(--border)' }}
+    >
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 h-16 grid grid-cols-3 items-center">
+        {/* Sinistra — lingua */}
+        <div className="flex items-center">
           <LanguageSwitcher />
+        </div>
 
+        {/* Centro — logo */}
+        <div className="flex justify-center">
+          <Link
+            href="/"
+            className="font-display text-2xl italic font-light tracking-wide hover:opacity-70 transition-opacity"
+            style={{ color: 'var(--ink)' }}
+          >
+            {t.siteTitle}
+          </Link>
+        </div>
+
+        {/* Destra — carrello */}
+        <div className="flex justify-end">
           <button
             onClick={openCart}
-            className="relative p-2 text-gray-700 hover:text-gray-900 transition-colors"
+            className="relative flex items-center gap-2 group"
             aria-label={t.openCart}
           >
-            <ShoppingBag className="w-6 h-6" />
-            {totalItems > 0 && (
-              <span className="absolute -top-1 -right-1 bg-black text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+            <ShoppingBag
+              className="w-5 h-5 transition-opacity group-hover:opacity-60"
+              style={{ color: 'var(--ink)' }}
+            />
+            {totalItems > 0 ? (
+              <span
+                className="text-sm font-medium tabular-nums"
+                style={{ color: 'var(--ink)' }}
+              >
                 {totalItems > 99 ? '99+' : totalItems}
               </span>
-            )}
+            ) : null}
           </button>
         </div>
       </div>

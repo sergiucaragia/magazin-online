@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Il Mio Negozio** — Ecommerce di abbigliamento senza gestione pagamenti. Gli utenti sfogliano il catalogo, aggiungono prodotti al carrello e inviano un ordine. L'ordine viene salvato su Supabase e notificato istantaneamente via Telegram al proprietario. Include un'area admin protetta per gestire prodotti e ordini.
+**Magazinul Meu** — Ecommerce di abbigliamento senza gestione pagamenti. Gli utenti sfogliano il catalogo, aggiungono prodotti al carrello e inviano un ordine. L'ordine viene salvato su Supabase, notificato via Telegram al proprietario e confermato via email al cliente. Include un'area admin protetta per gestire prodotti e ordini.
 
 ## Tech Stack
 
@@ -13,24 +13,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Database / Auth / Storage**: Supabase (PostgreSQL + Supabase Auth + Supabase Storage)
 - **State**: Zustand (carrello + lingua persistiti in localStorage, UI state)
 - **Data Fetching**: React Query (`useInfiniteQuery` per catalogo, Server Components per admin)
-- **Notifiche**: Telegram Bot API
+- **Notifiche**: Telegram Bot API + Resend (email conferma ordine)
 - **i18n**: Sistema custom con traduzioni statiche (Rumeno `ro` + Russo `ru`)
 
 ## Commands
 
 ```bash
-npm run dev          # Dev server (http://localhost:3000)
-npm run build        # Build produzione
+npm run dev          # Dev server (http://localhost:3000) — legge .env.development.local
+npm run build        # Build produzione — legge .env.production.local
 npm run start        # Avvia build produzione
+npm run start:local  # Avvia con NODE_ENV=production (per testare env prod in locale)
 npm run lint         # ESLint
 ```
 
+## Environment — dev vs prod
+
+Next.js carica automaticamente il file corretto in base al comando:
+
+| Comando | File env caricato |
+|---|---|
+| `next dev` | `.env.development.local` |
+| `next build` / `next start` | `.env.production.local` |
+
+Non usare `.env.local` (sovrascrive entrambi gli ambienti). Su Vercel le variabili vanno inserite in **Settings → Environment Variables**.
+
 ## Setup iniziale
 
-1. Copia `.env.local.example` → `.env.local` e inserisci le credenziali
-2. Esegui `supabase/migrations/001_initial_schema.sql` nella SQL Editor di Supabase
-3. Crea il bucket `product-images` su Supabase Storage (visibilità: **pubblico**)
-4. Crea l'utente admin via Supabase Auth → Authentication → Users
+1. Crea due progetti Supabase separati (dev + prod)
+2. Copia `.env.local.example` → `.env.development.local` (credenziali progetto dev)
+3. Copia `.env.local.example` → `.env.production.local` (credenziali progetto prod)
+4. In entrambi i progetti Supabase: esegui `supabase/migrations/001_initial_schema.sql` nella SQL Editor
+5. Crea il bucket `product-images` su Supabase Storage (visibilità: **pubblico**) + policy pubblica di lettura
+6. Crea l'utente admin via Supabase Auth → Authentication → Users
 
 ## Struttura del progetto
 
@@ -46,13 +60,17 @@ src/
 │   │   ├── page.tsx            # Dashboard con statistiche
 │   │   ├── products/           # Lista, /new, /[id]/edit
 │   │   └── orders/             # Lista ordini con espansione dettagli
-│   ├── api/orders/route.ts     # POST: salva ordine + notifica Telegram
+│   ├── api/
+│   │   ├── orders/route.ts     # POST: salva ordine via RPC → Telegram + email conferma
+│   │   └── upload/route.ts     # POST: upload immagine su Supabase Storage (richiede auth)
 │   └── layout.tsx              # Root layout con <Providers>
 ├── components/
 │   ├── store/                  # Navbar, CartDrawer, ProductCard, ProductDetail
 │   │                           # CatalogClient (infinite scroll), CheckoutClient
-│   └── admin/                  # AdminSidebar, AdminLoginForm, ProductForm
-│                               # ProductsTable, OrdersTable
+│   ├── admin/                  # AdminSidebar, AdminLoginForm, ProductForm
+│   │                           # ProductsTable, OrdersTable
+│   ├── T.tsx                   # Componente inline per testi tradotti (wrappa useT)
+│   └── LanguageSwitcher.tsx    # Bottone RO/RU nella Navbar
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts           # createBrowserClient → per componenti client
@@ -61,18 +79,14 @@ src/
 │   ├── i18n/
 │   │   ├── translations.ts     # Dizionario completo ro/ru + genderMap (Uomo/Donna/Unisex → display)
 │   │   └── useT.ts             # Hook: useT() → { t, lang, tGender }
-│   ├── telegram.ts             # sendOrderNotification(order)
+│   ├── email.ts                # sendOrderConfirmationEmail(order) — usa Resend
+│   ├── telegram.ts             # sendOrderNotification(order) — messaggio in rumeno
 │   ├── providers.tsx           # QueryClientProvider wrapper ('use client')
 │   └── queries/products.ts     # fetchProducts(), fetchCategories(), fetchProductBySlug()
 ├── store/
 │   ├── cart.ts                 # Zustand: addItem, removeItem, updateQuantity, clearCart
 │   ├── ui.ts                   # Zustand: isCartOpen, openCart, closeCart
 │   └── language.ts             # Zustand: lang ('ro'|'ru'), persistito in localStorage
-├── components/
-│   ├── store/                  # (come sopra)
-│   ├── admin/                  # (come sopra)
-│   ├── T.tsx                   # Componente inline per testi tradotti (wrappa useT)
-│   └── LanguageSwitcher.tsx    # Bottone RO/RU nella Navbar
 ├── types/index.ts              # Tutti i tipi condivisi (Product, Order, CartItem, ecc.)
 └── middleware.ts               # Protegge /admin/* → redirect a /admin/login se non autenticato
 ```
@@ -92,8 +106,9 @@ Stato **solo locale**: Zustand + `persist` middleware → localStorage (chiave: 
 
 ### Flusso ordine
 1. `CheckoutClient` → `POST /api/orders` con `{ ...formData, items }`
-2. Route handler: insert in `orders` → insert in `order_items` → `sendOrderNotification()`
-3. `sendOrderNotification()` fa `fetch` a Telegram Bot API con messaggio formattato in Markdown
+2. Route handler: chiama RPC `place_order` (atomic insert `orders` + `order_items` + decremento stock)
+3. Dopo il salvataggio, in parallelo: `sendOrderNotification()` (Telegram al proprietario) + `sendOrderConfirmationEmail()` (email HTML al cliente via Resend)
+4. Gli errori di notifica non bloccano la risposta `201` al client
 
 ### Upload immagini prodotto
 `ProductForm` invia ogni file a `POST /api/upload` (Route Handler autenticato). Il route handler usa `createAdminClient()` per bypassare RLS e carica su `product-images/<productId|tmp>/<timestamp>.<ext>`. Il prodotto ha una **galleria** (`images: string[]`); `image_url` è derivato automaticamente come `images[0]` (cover). Max 5 immagini, 5 MB/cad, formati JPG/PNG/WEBP/GIF.
@@ -110,7 +125,7 @@ Tabelle: `categories`, `products` (con `sizes: text[]`, `colors: text[]`, `image
 
 > **Attenzione**: i valori `gender` nel DB sono in italiano (`Uomo`/`Donna`/`Unisex`). La UI li traduce tramite `genderMap` in `lib/i18n/translations.ts`.
 
-Schema completo + RLS policies + indici in `supabase/migrations/001_initial_schema.sql`.
+Schema completo + RLS policies + stored procedure `place_order` in `supabase/migrations/001_initial_schema.sql`.
 
 ## Environment variables
 
@@ -118,9 +133,14 @@ Schema completo + RLS policies + indici in `supabase/migrations/001_initial_sche
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=      # server-only
+SUPABASE_PASS=                  # password DB (accesso diretto Postgres)
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
+RESEND_API_KEY=                 # da resend.com → API Keys
+EMAIL_FROM=                     # es. "Magazinul Meu <noreply@tuodominio.com>"
 ```
+
+In sviluppo `EMAIL_FROM` può essere `Magazinul Meu <onboarding@resend.dev>` (invia solo al tuo indirizzo verificato su Resend, senza dominio proprio).
 
 ## i18n
 
@@ -135,4 +155,4 @@ Il sito è bilingue Rumeno (`ro`) + Russo (`ru`). La lingua è globale via `useL
 
 1. Apri Telegram → cerca `@BotFather` → `/newbot` → ottieni il token
 2. Invia un messaggio al bot, poi apri `https://api.telegram.org/bot<TOKEN>/getUpdates` per trovare il `chat_id`
-3. Inserisci entrambi in `.env.local`
+3. Inserisci entrambi nel file env appropriato (`.env.development.local` o `.env.production.local`)

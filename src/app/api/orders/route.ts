@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { createClient } from '@/lib/supabase/server';
 import { sendOrderNotification } from '@/lib/telegram';
+import { sendOrderConfirmationEmail } from '@/lib/email';
 import type { CreateOrderPayload } from '@/types';
 
 export async function POST(req: NextRequest) {
@@ -67,10 +68,13 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (order) {
-        await sendOrderNotification(order as any);
+        await Promise.all([
+          sendOrderNotification(order as any),
+          sendOrderConfirmationEmail(order as any),
+        ]);
       }
-    } catch (telegramError) {
-      console.error('Telegram notification error:', telegramError);
+    } catch (notificationError) {
+      console.error('Notification error:', notificationError);
     }
 
     return NextResponse.json({ success: true, orderId }, { status: 201 });

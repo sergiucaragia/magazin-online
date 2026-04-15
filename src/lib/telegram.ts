@@ -11,34 +11,34 @@ export async function sendOrderNotification(
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) {
-    console.warn('Credenziali Telegram non configurate. Notifica non inviata.');
+    console.warn('Credențiale Telegram lipsă. Notificarea nu a fost trimisă.');
     return;
   }
 
   const itemsList = order.order_items
     .map(
       (item) =>
-        `  • ${item.product_name}${item.selected_size ? ` (Taglia: ${item.selected_size})` : ''}${item.selected_color ? ` (Colore: ${item.selected_color})` : ''} × ${item.quantity} — €${(item.product_price * item.quantity).toFixed(2)}`
+        `  • ${item.product_name}${item.selected_size ? ` (Mărime: ${item.selected_size})` : ''}${item.selected_color ? ` (Culoare: ${item.selected_color})` : ''} × ${item.quantity} — €${(item.product_price * item.quantity).toFixed(2)}`
     )
     .join('\n');
 
   const message = `
-🛍️ *NUOVO ORDINE RICEVUTO*
+🛍️ *COMANDĂ NOUĂ PRIMITĂ*
 
-*ID Ordine:* \`${order.id.slice(0, 8).toUpperCase()}\`
-*Data:* ${new Date(order.created_at).toLocaleString('it-IT')}
+*ID Comandă:* \`${order.id.slice(0, 8).toUpperCase()}\`
+*Data:* ${new Date(order.created_at).toLocaleString('ro-RO')}
 
-👤 *CLIENTE*
-Nome: ${order.customer_name}
+👤 *CLIENT*
+Nume: ${order.customer_name}
 Email: ${order.customer_email}
-Telefono: ${order.customer_phone}
+Telefon: ${order.customer_phone}
 
-📦 *PRODOTTI*
+📦 *PRODUSE*
 ${itemsList}
 
-💰 *TOTALE: €${order.total_amount.toFixed(2)}*
+💰 *TOTAL: €${order.total_amount.toFixed(2)}*
 
-🚚 *SPEDIZIONE*
+🚚 *LIVRARE*
 ${order.shipping_address}
 `.trim();
 

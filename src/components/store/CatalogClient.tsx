@@ -2,13 +2,12 @@
 
 import { useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { fetchProducts, fetchCategories } from '@/lib/queries/products';
 import { useT } from '@/lib/i18n/useT';
 import { ProductCard } from './ProductCard';
 import type { Category } from '@/types';
 
-// Valori DB (sempre italiani) → label tradotta dinamicamente
 const GENDER_DB_VALUES = ['Uomo', 'Donna', 'Unisex'];
 
 export function CatalogClient() {
@@ -17,7 +16,6 @@ export function CatalogClient() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [gender, setGender] = useState('');
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -43,118 +41,168 @@ export function CatalogClient() {
 
   const products = data?.pages.flatMap((p) => p.products) ?? [];
   const total = data?.pages[0]?.total ?? 0;
-  const hasActiveFilters = categoryId || gender;
+  const hasActiveFilters = !!(categoryId || gender);
   const clearFilters = () => { setCategoryId(''); setGender(''); };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Căutare + filtre */}
-      <div className="flex gap-3 mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+    <div className="max-w-7xl mx-auto px-6 lg:px-8 py-10">
+
+      {/* Header sezione */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
+        <div>
+          <p
+            className="text-xs font-semibold tracking-[0.25em] uppercase mb-1"
+            style={{ color: 'var(--gold)' }}
+          >
+            Catalog
+          </p>
+          <h2 className="font-display text-4xl italic font-light" style={{ color: 'var(--ink)' }}>
+            {!isLoading && `${total} ${total === 1 ? t.productFound : t.productsFound}`}
+          </h2>
+        </div>
+
+        {/* Ricerca */}
+        <div className="relative sm:w-64">
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5"
+            style={{ color: 'var(--muted)' }}
+          />
           <input
             type="search"
             placeholder={t.searchPlaceholder}
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-black/10 text-sm"
+            className="w-full pl-9 pr-4 py-2.5 text-sm bg-white focus:outline-none transition-shadow"
+            style={{
+              border: '1px solid var(--border)',
+              color: 'var(--ink)',
+            }}
           />
         </div>
-        <button
-          onClick={() => setFiltersOpen(!filtersOpen)}
-          className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
-            hasActiveFilters ? 'bg-black text-white border-black' : 'bg-white hover:bg-gray-50'
-          }`}
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-          {t.filters}
-          {hasActiveFilters && (
-            <span className="bg-white text-black rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold">
-              {[categoryId, gender].filter(Boolean).length}
-            </span>
-          )}
-        </button>
       </div>
 
-      {/* Panou filtre */}
-      {filtersOpen && (
-        <div className="bg-gray-50 border rounded-xl p-4 mb-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium text-sm">{t.filterBy}</h3>
-            {hasActiveFilters && (
-              <button onClick={clearFilters} className="text-xs text-gray-500 flex items-center gap-1 hover:text-black">
-                <X className="w-3 h-3" /> {t.removeFilters}
-              </button>
-            )}
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1.5 font-medium uppercase tracking-wide">
-                {t.category}
-              </label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
-              >
-                <option value="">{t.allCategories}</option>
-                {categories?.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1.5 font-medium uppercase tracking-wide">
-                {t.gender}
-              </label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
-              >
-                <option value="">{t.allGenders}</option>
-                {GENDER_DB_VALUES.map((dbVal) => (
-                  <option key={dbVal} value={dbVal}>{tGender(dbVal)}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Filtri orizzontali pill */}
+      <div
+        className="flex flex-wrap items-center gap-2 pb-6 mb-6"
+        style={{ borderBottom: '1px solid var(--border)' }}
+      >
+        {/* Tutte le categorie */}
+        <button
+          onClick={() => setCategoryId('')}
+          className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase transition-all"
+          style={
+            categoryId === ''
+              ? { background: 'var(--ink)', color: 'var(--cream)' }
+              : { border: '1px solid var(--border)', color: 'var(--muted)', background: 'transparent' }
+          }
+        >
+          {t.allCategories}
+        </button>
 
-      {/* Contor */}
-      {!isLoading && (
-        <p className="text-sm text-gray-500 mb-4">
-          {total} {total === 1 ? t.productFound : t.productsFound}
-        </p>
-      )}
+        {categories?.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => setCategoryId(c.id)}
+            className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase transition-all"
+            style={
+              categoryId === c.id
+                ? { background: 'var(--ink)', color: 'var(--cream)' }
+                : { border: '1px solid var(--border)', color: 'var(--muted)', background: 'transparent' }
+            }
+          >
+            {c.name}
+          </button>
+        ))}
 
-      {/* Grilă */}
+        {/* Separatore */}
+        <div className="w-px h-5 mx-1" style={{ background: 'var(--border)' }} />
+
+        {/* Generi */}
+        <button
+          onClick={() => setGender('')}
+          className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase transition-all"
+          style={
+            gender === ''
+              ? { background: 'var(--ink)', color: 'var(--cream)' }
+              : { border: '1px solid var(--border)', color: 'var(--muted)', background: 'transparent' }
+          }
+        >
+          {t.allGenders}
+        </button>
+
+        {GENDER_DB_VALUES.map((dbVal) => (
+          <button
+            key={dbVal}
+            onClick={() => setGender(dbVal)}
+            className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase transition-all"
+            style={
+              gender === dbVal
+                ? { background: 'var(--ink)', color: 'var(--cream)' }
+                : { border: '1px solid var(--border)', color: 'var(--muted)', background: 'transparent' }
+            }
+          >
+            {tGender(dbVal)}
+          </button>
+        ))}
+
+        {hasActiveFilters && (
+          <button
+            onClick={clearFilters}
+            className="ml-auto flex items-center gap-1 text-xs transition-opacity hover:opacity-60"
+            style={{ color: 'var(--muted)' }}
+          >
+            <X className="w-3 h-3" />
+            {t.removeFilters}
+          </button>
+        )}
+      </div>
+
+      {/* Griglia prodotti */}
       {isLoading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="product-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-10">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="bg-gray-100 rounded-xl animate-pulse aspect-[3/4]" />
+            <div
+              key={i}
+              className="animate-pulse aspect-[3/4]"
+              style={{ background: '#EDE8E1' }}
+            />
           ))}
         </div>
       ) : products.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
-          <p className="text-lg">{t.noProductsFound}</p>
+        <div className="py-28 text-center">
+          <p className="font-display text-3xl italic font-light" style={{ color: '#C8BFB4' }}>
+            {t.noProductsFound}
+          </p>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="product-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-12">
             {products.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
           </div>
+
           {hasNextPage && (
-            <div className="text-center mt-10">
+            <div className="text-center mt-16">
               <button
                 onClick={() => fetchNextPage()}
                 disabled={isFetchingNextPage}
-                className="px-8 py-3 border rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-4 group disabled:opacity-40"
               >
-                {isFetchingNextPage ? t.loading : t.loadMore}
+                <span
+                  className="w-16 h-px transition-all duration-300 group-hover:w-8"
+                  style={{ background: 'var(--border)' }}
+                />
+                <span
+                  className="text-xs font-semibold tracking-[0.25em] uppercase"
+                  style={{ color: 'var(--muted)' }}
+                >
+                  {isFetchingNextPage ? t.loading : t.loadMore}
+                </span>
+                <span
+                  className="w-16 h-px transition-all duration-300 group-hover:w-8"
+                  style={{ background: 'var(--border)' }}
+                />
               </button>
             </div>
           )}
