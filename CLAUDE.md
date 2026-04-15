@@ -11,9 +11,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Framework**: Next.js 15 (App Router), TypeScript
 - **Styling**: Tailwind CSS v4, Lucide React
 - **Database / Auth / Storage**: Supabase (PostgreSQL + Supabase Auth + Supabase Storage)
-- **State**: Zustand (carrello persistito in localStorage, UI state)
+- **State**: Zustand (carrello + lingua persistiti in localStorage, UI state)
 - **Data Fetching**: React Query (`useInfiniteQuery` per catalogo, Server Components per admin)
 - **Notifiche**: Telegram Bot API
+- **i18n**: Sistema custom con traduzioni statiche (Rumeno `ro` + Russo `ru`)
 
 ## Commands
 
@@ -57,12 +58,21 @@ src/
 │   │   ├── client.ts           # createBrowserClient → per componenti client
 │   │   ├── server.ts           # createServerClient (cookies) → per Server Components
 │   │   └── storage.ts          # uploadProductImage(), deleteProductImage()
+│   ├── i18n/
+│   │   ├── translations.ts     # Dizionario completo ro/ru + genderMap (Uomo/Donna/Unisex → display)
+│   │   └── useT.ts             # Hook: useT() → { t, lang, tGender }
 │   ├── telegram.ts             # sendOrderNotification(order)
 │   ├── providers.tsx           # QueryClientProvider wrapper ('use client')
 │   └── queries/products.ts     # fetchProducts(), fetchCategories(), fetchProductBySlug()
 ├── store/
 │   ├── cart.ts                 # Zustand: addItem, removeItem, updateQuantity, clearCart
-│   └── ui.ts                   # Zustand: isCartOpen, openCart, closeCart
+│   ├── ui.ts                   # Zustand: isCartOpen, openCart, closeCart
+│   └── language.ts             # Zustand: lang ('ro'|'ru'), persistito in localStorage
+├── components/
+│   ├── store/                  # (come sopra)
+│   ├── admin/                  # (come sopra)
+│   ├── T.tsx                   # Componente inline per testi tradotti (wrappa useT)
+│   └── LanguageSwitcher.tsx    # Bottone RO/RU nella Navbar
 ├── types/index.ts              # Tutti i tipi condivisi (Product, Order, CartItem, ecc.)
 └── middleware.ts               # Protegge /admin/* → redirect a /admin/login se non autenticato
 ```
@@ -86,7 +96,7 @@ Stato **solo locale**: Zustand + `persist` middleware → localStorage (chiave: 
 3. `sendOrderNotification()` fa `fetch` a Telegram Bot API con messaggio formattato in Markdown
 
 ### Upload immagini prodotto
-In `ProductForm` (client): upload diretto a Supabase Storage bucket `product-images` via `supabase.storage.from(...).upload()` → `getPublicUrl()` → salva URL in `products.image_url`.
+`ProductForm` invia ogni file a `POST /api/upload` (Route Handler autenticato). Il route handler usa `createAdminClient()` per bypassare RLS e carica su `product-images/<productId|tmp>/<timestamp>.<ext>`. Il prodotto ha una **galleria** (`images: string[]`); `image_url` è derivato automaticamente come `images[0]` (cover). Max 5 immagini, 5 MB/cad, formati JPG/PNG/WEBP/GIF.
 
 ### Slug prodotto
 Generato automaticamente dal nome in `ProductForm`: lowercase, rimozione accenti, caratteri non alfanumerici → `-`.
@@ -96,7 +106,9 @@ Generato automaticamente dal nome in `ProductForm`: lowercase, rimozione accenti
 
 ## Database schema
 
-Tabelle: `categories`, `products` (con `sizes: text[]`, `colors: text[]`, `gender: Uomo|Donna|Unisex`), `orders`, `order_items` (con `selected_size`, `selected_color` — snapshot al momento dell'ordine).
+Tabelle: `categories`, `products` (con `sizes: text[]`, `colors: text[]`, `images: text[]`, `image_url text` derivato da `images[0]`, `gender: Uomo|Donna|Unisex`), `orders`, `order_items` (con `selected_size`, `selected_color` — snapshot al momento dell'ordine).
+
+> **Attenzione**: i valori `gender` nel DB sono in italiano (`Uomo`/`Donna`/`Unisex`). La UI li traduce tramite `genderMap` in `lib/i18n/translations.ts`.
 
 Schema completo + RLS policies + indici in `supabase/migrations/001_initial_schema.sql`.
 
@@ -109,6 +121,15 @@ SUPABASE_SERVICE_ROLE_KEY=      # server-only
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 ```
+
+## i18n
+
+Il sito è bilingue Rumeno (`ro`) + Russo (`ru`). La lingua è globale via `useLangStore` (Zustand, `language.ts`).
+
+- **Usare traduzioni in un componente client**: `const { t, tGender } = useT()` → `t.heroTitle`, `tGender('Uomo')`
+- **Aggiungere una nuova stringa**: aggiungila in entrambe le chiavi `ro` e `ru` in `translations.ts` — TypeScript segnala automaticamente chiavi mancanti grazie a `TranslationKey`
+- **Testo inline semplice**: usa il componente `<T k="heroTitle" />` invece di `useT`
+- I valori `gender` nel DB restano in italiano; `tGender(dbValue)` li mappa nella lingua corrente
 
 ## Telegram setup rapido
 
